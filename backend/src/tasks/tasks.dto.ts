@@ -14,6 +14,10 @@ export class CreateTaskDto {
   description?: string;
 
   @IsOptional()
+  @IsEnum(TaskStatus)
+  status?: TaskStatus;
+
+  @IsOptional()
   @IsEnum(Priority)
   priority?: Priority;
 
