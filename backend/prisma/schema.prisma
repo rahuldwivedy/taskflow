@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  projects       ProjectMember[]
+  createdTasks   Task[]          @relation("TaskCreator")
+  assignedTasks  Task[]          @relation("TaskAssignee")
+  comments       Comment[]
+  activityLog    ActivityLog[]
+  refreshTokens  RefreshToken[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  ownerId     String   @map("owner_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  members     ProjectMember[]
+  tasks       Task[]
+  activity    ActivityLog[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  role      Role     @default(MEMBER)
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@map("project_members")
+}
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  projectId   String     @map("project_id")
+  createdById String     @map("created_by")
+  assigneeId  String?    @map("assignee_id")
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?  @map("due_date")
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("TaskCreator", fields: [createdById], references: [id])
+  assignee  User?    @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  comments  Comment[]
+
+  @@map("tasks")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  taskId    String   @map("task_id")
+  authorId  String   @map("author_id")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@map("comments")
+}
+
+model ActivityLog {
+  id        String        @id @default(uuid())
+  projectId String        @map("project_id")
+  actorId   String        @map("actor_id")
+  eventType ActivityEvent @map("event_type")
+  payload   Json          
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor   User    @relation(fields: [actorId], references: [id])
+
+  @@map("activity_log")
+}
+
+enum ActivityEvent {
+  TASK_CREATED
+  TASK_MOVED
+  TASK_ASSIGNED
+  MEMBER_INVITED
+  MEMBER_REMOVED
+  COMMENT_ADDED
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}

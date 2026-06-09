@@ -1,0 +1,54 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U taskflow']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://taskflow:taskflow@db:5432/taskflow
+      ACCESS_TOKEN_SECRET: change_this_in_production_access_secret_32chars
+      ACCESS_TOKEN_EXPIRY: 15m
+      REFRESH_TOKEN_SECRET: change_this_in_production_refresh_secret_32chars
+      REFRESH_TOKEN_EXPIRY: 7d
+      PORT: 3001
+      CLIENT_ORIGIN: http://localhost:3000
+    ports:
+      - '3001:3001'
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: http://localhost:3001
+    ports:
+      - '3000:3000'
+
+volumes:
+  pgdata:
