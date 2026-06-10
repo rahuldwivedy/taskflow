@@ -6,8 +6,6 @@ import { ActivityEvent, Priority, TaskStatus } from '@prisma/client';
 import { CreateTaskDto, UpdateTaskDto, UpdateStatusDto, TaskQueryDto } from './tasks.dto';
 import { TaskGateway } from '../websocket/task.gateway';
 
-const PRIORITY_ORDER = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-
 @Injectable()
 export class TasksService {
   constructor(
@@ -22,14 +20,20 @@ export class TasksService {
     if (status) where.status = status;
     if (priority) where.priority = priority;
     if (assigneeId) where.assigneeId = assigneeId;
-    if (search) where.title = { contains: search, mode: 'insensitive' };
+    if (search) where.title = { contains: search };
+
+    // MySQL-safe orderBy
+    let orderBy: any = { createdAt: order };
+    if (sort === 'dueDate') orderBy = { dueDate: order };
+    else if (sort === 'priority') orderBy = { priority: order };
+    else if (sort === 'createdAt') orderBy = { createdAt: order };
 
     const [tasks, total] = await Promise.all([
       this.prisma.task.findMany({
         where,
         skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { [sort]: order },
+        take: Number(limit),
+        orderBy,
         include: {
           assignee: { select: { id: true, name: true, email: true } },
           createdBy: { select: { id: true, name: true } },
@@ -57,6 +61,7 @@ export class TasksService {
         createdById: userId,
         title: dto.title,
         description: dto.description,
+        status: dto.status || TaskStatus.TODO,
         priority: dto.priority || Priority.MEDIUM,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         assigneeId: dto.assigneeId || null,
@@ -89,7 +94,6 @@ export class TasksService {
 
     this.gateway.emitToProject(projectId, 'task:created', task);
 
-    // Update "assigned to me" view for the assignee
     if (task.assigneeId) {
       this.gateway.emitToUser(task.assigneeId, 'assigned:updated', { task });
     }
@@ -144,7 +148,6 @@ export class TasksService {
   async updateStatus(projectId: string, taskId: string, userId: string, dto: UpdateStatusDto, memberRole: string) {
     const task = await this.assertTaskExists(taskId, projectId);
 
-    // Rule: only assignee or owner can mark Done
     if (dto.status === TaskStatus.DONE) {
       const isOwner = memberRole === 'OWNER';
       const isAssignee = task.assigneeId === userId;
